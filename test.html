@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>বাজার খরচ হিসাব</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  font-family:"Segoe UI",sans-serif;
+  background:linear-gradient(135deg,#e0f7fa,#e1bee7);
+  min-height:100vh;
+  padding:20px;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+}
+.container{
+  width:100%;
+  max-width:900px;
+  background:#ffffffcc;
+  backdrop-filter:blur(8px);
+  border-radius:20px;
+  box-shadow:0 8px 20px rgba(0,0,0,0.15);
+  padding:30px;
+}
+.header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:20px;
+}
+h1{font-size:2rem;color:#4a148c;}
+.total-badge{
+  background:#ff6f00;
+  color:#fff;
+  font-weight:bold;
+  font-size:1.2rem;
+  padding:12px 20px;
+  border-radius:30px;
+  box-shadow:0 4px 10px rgba(0,0,0,0.2);
+}
+form, .filters{
+  display:flex;flex-wrap:wrap;gap:15px;justify-content:center;margin-bottom:20px;
+}
+form input, form button, .filters input, .filters button{
+  padding:12px 14px;font-size:16px;border:1px solid #ccc;border-radius:10px;transition:.3s;
+}
+form input:focus, .filters input:focus{border-color:#7b1fa2;outline:none;box-shadow:0 0 6px #7b1fa2;}
+form button, .filters button{background:#7b1fa2;color:#fff;cursor:pointer;border:none;font-weight:600;}
+form button:hover, .filters button:hover{background:#4a148c;}
+.table-wrapper{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;text-align:center;font-size:16px;}
+thead{background:#7b1fa2;color:#fff;}
+th,td{padding:12px 10px;border-bottom:1px solid #ddd;}
+tbody tr:hover{opacity:0.85;transform:scale(1.02);transition:0.2s;}
+tfoot td{font-weight:bold;background:#ede7f6;}
+.delete-btn{color:#d32f2f;font-size:20px;cursor:pointer;transition:.3s;}
+.delete-btn:hover{color:#b71c1c;}
+.item-badge{
+  display:inline-block;
+  color:#fff;
+  padding:4px 10px;
+  border-radius:20px;
+  font-size:14px;
+  margin:2px;
+}
+.icon{margin-right:6px;}
+.date-header{background:#d1c4e9;font-weight:bold;text-align:left;padding-left:10px;}
+.bg-rice{background:#fff9c4;color:#4a148c;}
+.bg-meat{background:#ffcdd2;color:#4a148c;}
+.bg-veg{background:#c8e6c9;color:#2e7d32;}
+.bg-dairy{background:#bbdefb;color:#0d47a1;}
+.bg-other{background:#e0e0e0;color:#000;}
+.empty-row td{text-align:center;color:#777;font-style:italic;}
+@media(max-width:600px){
+  form, .filters{flex-direction:column;align-items:stretch;}
+  form input, form button, .filters input, .filters button{width:100%;}
+  .header{flex-direction:column;align-items:flex-start;gap:10px;}
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>বাজার খরচের হিসাব</h1>
+    <div class="total-badge" id="total-badge">৳ 0.00</div>
+  </div>
+
+  <form id="expense-form">
+    <input type="date" id="date" required>
+    <input type="text" id="item" placeholder="আইটেমের নাম" required>
+    <input type="number" id="amount" placeholder="টাকার পরিমাণ" step="0.01" min="0" required>
+    <button type="submit">➕ যোগ করুন</button>
+  </form>
+
+  <div class="filters">
+    <input type="date" id="filter-date" placeholder="তারিখ অনুসারে ফিল্টার">
+    <input type="text" id="search-item" placeholder="আইটেম অনুসারে সার্চ">
+    <button id="clear-filter">❌ ক্লিয়ার</button>
+  </div>
+
+  <div class="table-wrapper">
+    <table id="expense-table">
+      <thead>
+        <tr>
+          <th>ক্রম</th>
+          <th>তারিখ</th>
+          <th>আইটেম</th>
+          <th>টাকা (৳)</th>
+          <th>ডিলিট</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const form = document.getElementById('expense-form');
+const tbody = document.querySelector('#expense-table tbody');
+const totalBadge = document.getElementById('total-badge');
+let expenses = JSON.parse(localStorage.getItem('expenses') || '[]');
+
+document.getElementById('date').valueAsDate = new Date();
+
+function getIcon(item){
+  item = item.toLowerCase();
+  if(/চাল|ডাল|ভাত/.test(item)) return '🍚';
+  if(/মাছ|মাংস|চিকেন|মুরগি/.test(item)) return '🍖';
+  if(/সবজি|শাক|পাতা/.test(item)) return '🥬';
+  if(/দুধ|ডিম|পনির|মাখন/.test(item)) return '🥛';
+  return '🛒';
+}
+
+function getBgClass(item){
+  item = item.toLowerCase();
+  if(/চাল|ডাল|ভাত/.test(item)) return 'bg-rice';
+  if(/মাছ|মাংস|চিকেন|মুরগি/.test(item)) return 'bg-meat';
+  if(/সবজি|শাক|পাতা/.test(item)) return 'bg-veg';
+  if(/দুধ|ডিম|পনির|মাখন/.test(item)) return 'bg-dairy';
+  return 'bg-other';
+}
+
+function renderTable(){
+  tbody.innerHTML = '';
+  let totalAll = 0;
+  const filterDate = document.getElementById('filter-date').value;
+  const searchItem = document.getElementById('search-item').value.toLowerCase();
+
+  const filtered = expenses.filter(exp=>{
+    let matchDate = filterDate ? exp.date === filterDate : true;
+    let matchItem = searchItem ? exp.item.toLowerCase().includes(searchItem) : true;
+    return matchDate && matchItem;
+  });
+
+  if(filtered.length === 0){
+    const tr = document.createElement('tr');
+    tr.classList.add('empty-row');
+    tr.innerHTML = `<td colspan="5">কোনো খরচ পাওয়া যায়নি</td>`;
+    tbody.appendChild(tr);
+    totalBadge.textContent = '৳ 0.00';
+    return;
+  }
+
+  const grouped = {};
+  filtered.forEach(exp=>{
+    if(!grouped[exp.date]) grouped[exp.date]=[];
+    grouped[exp.date].push(exp);
+  });
+
+  Object.keys(grouped).sort().forEach(date=>{
+    const items = grouped[date];
+    let totalDate = 0;
+
+    const dateTr = document.createElement('tr');
+    dateTr.innerHTML=`<td colspan="5" class="date-header">তারিখ: ${date}</td>`;
+    tbody.appendChild(dateTr);
+
+    items.forEach((exp,index)=>{
+      totalDate += exp.amount;
+      totalAll += exp.amount;
+      const tr = document.createElement('tr');
+      const icon = getIcon(exp.item);
+      const bgClass = getBgClass(exp.item);
+      tr.innerHTML=`
+        <td>${index+1}</td>
+        <td>${exp.date}</td>
+        <td><span class="item-badge ${bgClass}"><span class="icon">${icon}</span>${exp.item}</span></td>
+        <td>${exp.amount.toFixed(2)}</td>
+        <td class="delete-btn" data-index="${expenses.indexOf(exp)}">×</td>`;
+      tbody.appendChild(tr);
+    });
+
+    const totalTr = document.createElement('tr');
+    totalTr.innerHTML=`<td colspan="3" style="text-align:right;font-weight:bold;">মোট</td><td>${totalDate.toFixed(2)}</td><td></td>`;
+    tbody.appendChild(totalTr);
+  });
+
+  totalBadge.textContent=`৳ ${totalAll.toFixed(2)}`;
+  localStorage.setItem('expenses',JSON.stringify(expenses));
+}
+
+form.addEventListener('submit', e=>{
+  e.preventDefault();
+  const date = document.getElementById('date').value;
+  const item = document.getElementById('item').value.trim();
+  const amount = parseFloat(document.getElementById('amount').value);
+  if(!date||!item||isNaN(amount)) return;
+  expenses.push({date,item,amount});
+  form.reset();
+  document.getElementById('date').valueAsDate = new Date();
+  renderTable();
+});
+
+tbody.addEventListener('click', e=>{
+  if(e.target.classList.contains('delete-btn')){
+    const index = parseInt(e.target.dataset.index);
+    expenses.splice(index,1);
+    renderTable();
+  }
+});
+
+document.getElementById('filter-date').addEventListener('input', renderTable);
+document.getElementById('search-item').addEventListener('input', renderTable);
+document.getElementById('clear-filter').addEventListener('click', ()=>{
+  document.getElementById('filter-date').value='';
+  document.getElementById('search-item').value='';
+  renderTable();
+});
+
+renderTable();
+</script>
+</body>
+</html>
